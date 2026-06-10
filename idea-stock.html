@@ -429,6 +429,97 @@ function IdeaCard({ idea, members, onClick, onDelete }) {
   );
 }
 
+
+// ── TagManageModal ─────────────────────────────────────────────────
+function TagManageModal({ tags, onClose, onRefresh }) {
+  const [input, setInput] = useState("");
+  const [editId, setEditId] = useState(null);
+  const [editVal, setEditVal] = useState("");
+  const [err, setErr] = useState("");
+
+  const addTag = async () => {
+    const name = input.trim();
+    if (!name) return;
+    if (tags.find(t=>t.name===name)) { setErr("同じタグが既にあります"); return; }
+    await sb.from("tags").insert({ id:"tag"+Date.now(), name });
+    setInput(""); setErr("");
+    onRefresh();
+  };
+
+  const deleteTag = async (id) => {
+    await sb.from("tags").delete().eq("id", id);
+    onRefresh();
+  };
+
+  const startEdit = (tag) => { setEditId(tag.id); setEditVal(tag.name); };
+
+  const saveEdit = async (id) => {
+    const name = editVal.trim();
+    if (!name) return;
+    await sb.from("tags").update({ name }).eq("id", id);
+    setEditId(null); setEditVal("");
+    onRefresh();
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(10,20,40,0.4)",zIndex:300,
+      display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(3px)",animation:"fadeInFast .15s ease"}}
+      onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{
+        background:"#fff",borderRadius:18,width:"min(95vw,440px)",maxHeight:"80vh",overflowY:"auto",
+        padding:"28px",boxShadow:"0 24px 60px rgba(0,0,0,0.16)",display:"flex",flexDirection:"column",gap:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <h2 style={{margin:0,fontSize:16,fontWeight:800,color:"#1A2840"}}>タグ管理</h2>
+          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"#8898AA",fontSize:22,lineHeight:1}}>×</button>
+        </div>
+
+        {/* Add tag */}
+        <div>
+          <label style={{fontSize:11,fontWeight:700,color:"#6B7A90",letterSpacing:".06em",textTransform:"uppercase"}}>新しいタグを追加</label>
+          <div style={{display:"flex",gap:8,marginTop:6}}>
+            <input value={input} onChange={e=>{setInput(e.target.value);setErr("")}}
+              onKeyDown={e=>e.key==="Enter"&&addTag()} placeholder="タグ名を入力"
+              style={{flex:1,padding:"9px 13px",border:"1.5px solid #DDE4EE",borderRadius:8,fontSize:14,outline:"none",fontFamily:"inherit",color:"#1A2840",background:"#fff"}}
+              onFocus={e=>e.target.style.borderColor="#4A90D9"} onBlur={e=>e.target.style.borderColor="#DDE4EE"}/>
+            <button onClick={addTag} style={{padding:"9px 16px",background:"#1A2840",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"inherit"}}>追加</button>
+          </div>
+          {err&&<p style={{margin:"6px 0 0",fontSize:12,color:"#E85D75"}}>{err}</p>}
+        </div>
+
+        {/* Tag list */}
+        <div>
+          <label style={{fontSize:11,fontWeight:700,color:"#6B7A90",letterSpacing:".06em",textTransform:"uppercase"}}>タグ一覧（{tags.length}件）</label>
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:10}}>
+            {tags.length===0&&<p style={{fontSize:13,color:"#B0BCC8",margin:0}}>タグがまだありません</p>}
+            {tags.map(tag=>(
+              <div key={tag.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#F7F9FC",borderRadius:10}}>
+                {editId===tag.id ? (
+                  <>
+                    <input value={editVal} onChange={e=>setEditVal(e.target.value)}
+                      onKeyDown={e=>e.key==="Enter"&&saveEdit(tag.id)}
+                      style={{flex:1,padding:"5px 10px",border:"1.5px solid #4A90D9",borderRadius:7,fontSize:13,outline:"none",fontFamily:"inherit",color:"#1A2840",background:"#fff"}}
+                      autoFocus/>
+                    <button onClick={()=>saveEdit(tag.id)} style={{padding:"5px 12px",background:"#52B788",color:"#fff",border:"none",borderRadius:7,cursor:"pointer",fontSize:12,fontWeight:600}}>保存</button>
+                    <button onClick={()=>setEditId(null)} style={{padding:"5px 10px",background:"#F0F4F8",color:"#4A6080",border:"none",borderRadius:7,cursor:"pointer",fontSize:12}}>キャンセル</button>
+                  </>
+                ) : (
+                  <>
+                    <span style={{flex:1,fontSize:13,fontWeight:600,color:"#1A2840"}}># {tag.name}</span>
+                    <button onClick={()=>startEdit(tag)} style={{background:"none",border:"none",cursor:"pointer",color:"#B0BCC8",fontSize:13,padding:2,transition:"color .15s"}}
+                      onMouseEnter={e=>e.target.style.color="#4A90D9"} onMouseLeave={e=>e.target.style.color="#B0BCC8"}>✏️</button>
+                    <button onClick={()=>deleteTag(tag.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#B0BCC8",fontSize:13,padding:2,transition:"color .15s"}}
+                      onMouseEnter={e=>e.target.style.color="#E85D75"} onMouseLeave={e=>e.target.style.color="#B0BCC8"}>🗑️</button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── App ───────────────────────────────────────────────────────────
 function App() {
   const [members,  setMembers]  = useState([]);
@@ -457,14 +548,16 @@ function App() {
   },[]);
 
   const fetchAll = useCallback(async () => {
-    const [{ data: m }, { data: id }, { data: inv }] = await Promise.all([
+    const [{ data: m }, { data: id }, { data: inv }, { data: tg }] = await Promise.all([
       sb.from("members").select("*").order("joined_at"),
       sb.from("ideas").select("*").order("created_at", { ascending: false }),
       sb.from("invites").select("*").order("created_at"),
+      sb.from("tags").select("*").order("name"),
     ]);
     setMembers(m||[]);
     setIdeas(id||[]);
     setInvites(inv||[]);
+    setManagedTags(tg||[]);
   },[]);
 
   // Init: load data + resolve session
@@ -491,6 +584,7 @@ function App() {
       .on("postgres_changes",{event:"*",schema:"public",table:"members"},()=>fetchAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"ideas"},()=>fetchAll())
       .on("postgres_changes",{event:"*",schema:"public",table:"invites"},()=>fetchAll())
+      .on("postgres_changes",{event:"*",schema:"public",table:"tags"},()=>fetchAll())
       .subscribe();
     return ()=>sb.removeChannel(ch);
   },[fetchAll]);
@@ -512,7 +606,12 @@ function App() {
 
   const logout = () => { store.set(SK_SESSION,"u1"); setSession(members.find(m=>m.id==="u1")||session); setUserMenuOpen(false); };
 
-  const allTags  = useMemo(()=>{const s=new Set();ideas.forEach(i=>(i.tags||[]).forEach(t=>s.add(t)));return[...s];},[ideas]);
+  const allTags  = useMemo(()=>{
+    const s=new Set();
+    managedTags.forEach(t=>s.add(t.name));
+    ideas.forEach(i=>(i.tags||[]).forEach(t=>s.add(t)));
+    return[...s];
+  },[ideas,managedTags]);
   const filtered = useMemo(()=>ideas.filter(idea=>{
     const q=search.toLowerCase();
     return (!q||idea.title.toLowerCase().includes(q)||(idea.memo||"").toLowerCase().includes(q)||(idea.tags||[]).some(t=>t.toLowerCase().includes(q)))
@@ -597,7 +696,11 @@ function App() {
       <div style={{display:"flex",maxWidth:1120,margin:"0 auto",padding:"22px 16px",gap:24}}>
         {/* Sidebar */}
         <aside style={{width:168,flexShrink:0}}>
-          <p style={{margin:"0 0 7px 3px",fontSize:10,fontWeight:700,color:"#8898AA",letterSpacing:".08em",textTransform:"uppercase"}}>タグ</p>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
+            <p style={{margin:0,fontSize:10,fontWeight:700,color:"#8898AA",letterSpacing:".08em",textTransform:"uppercase"}}>タグ</p>
+            <button onClick={()=>setShowTagMgr(true)} title="タグを管理" style={{background:"none",border:"none",cursor:"pointer",color:"#B0BCC8",fontSize:14,lineHeight:1,padding:2,transition:"color .15s"}}
+              onMouseEnter={e=>e.target.style.color="#4A90D9"} onMouseLeave={e=>e.target.style.color="#B0BCC8"}>⚙️</button>
+          </div>
           <div style={{display:"flex",flexDirection:"column",gap:2}}>
             <button onClick={()=>setActiveTag(null)} style={{padding:"6px 10px",borderRadius:7,border:"none",cursor:"pointer",textAlign:"left",background:!activeTag?"#1A2840":"transparent",color:!activeTag?"#fff":"#4A6080",fontSize:13,fontWeight:500,fontFamily:"inherit",transition:"all .15s"}}>
               すべて <span style={{color:!activeTag?"#88A0C0":"#B0BCC8",fontSize:12}}>({ideas.length})</span>
@@ -649,6 +752,7 @@ function App() {
 
       {ideaModal  && <IdeaModal idea={ideaModal==="new"?null:ideaModal} currentUser={session} onClose={()=>setIdeaModal(null)} onSave={saveIdea}/>}
       {showInvite && <InviteModal members={members} invites={invites} onClose={()=>setShowInvite(false)} onRefresh={fetchAll}/>}
+      {showTagMgr && <TagManageModal tags={managedTags} onClose={()=>setShowTagMgr(false)} onRefresh={fetchAll}/>}
       {userMenuOpen && <div onClick={()=>setUserMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:49}}/>}
     </div>
   );
